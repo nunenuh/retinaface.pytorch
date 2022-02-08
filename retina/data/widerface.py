@@ -6,14 +6,17 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset 
 from pathlib import Path
+from sklearn.model_selection import train_test_split
 
 
 class WiderFaceCustomDataset(Dataset):
-    def __init__(self, root, transform=None, pair_transform=None,
+    def __init__(self, root, transform=None, pair_transform=None, train=True, val_size=0.2,
                  label_filename: str = 'label.txt', images_dirname: str = 'images',):
         self.root: str = root
         self.label_filename: str = label_filename
         self.images_dirname: str = images_dirname
+        self.train = train
+        self.val_size = val_size
         
         self.root_path: Path = Path(root)
         self.label_path: Path = self.root_path.joinpath(self.label_filename)
@@ -22,6 +25,7 @@ class WiderFaceCustomDataset(Dataset):
         self.pair_transform = pair_transform
         
         self.images, self.labels = self._build_data()
+        self._do_split_validation()
         
        
     def _load_text_file(self, path):
@@ -61,6 +65,25 @@ class WiderFaceCustomDataset(Dataset):
         
         return images, words
     
+    def _do_split_validation(self):
+        train_images, valid_images, train_labels, valid_labels = train_test_split(
+            self.images, self.labels,
+            test_size=self.val_size, 
+            random_state=1261
+        )
+        
+        self.train_images = train_images
+        self.train_labels = train_labels
+        self.valid_images = valid_images
+        self.valid_labels = valid_labels
+        
+        if self.train:
+            self.images = self.train_images
+            self.labels = self.train_labels
+        else:
+            self.images = self.valid_images
+            self.labels = self.valid_labels
+    
     
     def _label_to_annotation(self, labels):
         annotations = np.zeros((0, 15))
@@ -99,18 +122,19 @@ class WiderFaceCustomDataset(Dataset):
 
     def __getitem__(self, index):
         labels = self.labels[index]
-        impath  =self.images[index]
+        impath = self.images[index]
         
         image = self._load_image(impath)
         target = self._label_to_annotation(labels)
         
+        if self.transform:
+            image = self.transform(image)
+        
         if self.pair_transform:
             image, target = self.pair_transform(image, target)
         
-        if self.transform:
-            image = self.transform(image)
 
-        return torch.from_numpy(image), target
+        return image, target
 
 
 def detection_collate(batch):
