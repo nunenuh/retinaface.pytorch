@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from ..ops.boxes import match, log_sum_exp
-from data import cfg_mnet
+# from retina.data.config import cfg_mnet
 
-GPU = cfg_mnet['gpu_train']
+# GPU = cfg_mnet['gpu_train']
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
@@ -30,7 +30,8 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
 
-    def __init__(self, num_classes, overlap_thresh, prior_for_matching, bkg_label, neg_mining, neg_pos, neg_overlap, encode_target):
+    def __init__(self, num_classes, overlap_thresh, prior_for_matching, bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, 
+                 device="cpu"):
         super(MultiBoxLoss, self).__init__()
         self.num_classes = num_classes
         self.threshold = overlap_thresh
@@ -41,6 +42,7 @@ class MultiBoxLoss(nn.Module):
         self.negpos_ratio = neg_pos
         self.neg_overlap = neg_overlap
         self.variance = [0.1, 0.2]
+        self.device = device
 
     def forward(self, predictions, priors, targets):
         """Multibox Loss
@@ -70,12 +72,14 @@ class MultiBoxLoss(nn.Module):
             landms = targets[idx][:, 4:14].data
             defaults = priors.data
             match(self.threshold, truths, defaults, self.variance, labels, landms, loc_t, conf_t, landm_t, idx)
-        if GPU:
+        if self.device!="cpu":
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
             landm_t = landm_t.cuda()
 
-        zeros = torch.tensor(0).cuda()
+            zeros = torch.tensor(0).cuda()
+        else:
+            zeros = torch.tensor(0)
         # landm Loss (Smooth L1)
         # Shape: [batch,num_priors,10]
         pos1 = conf_t > zeros
